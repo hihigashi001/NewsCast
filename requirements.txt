@@ -1,0 +1,21 @@
+# ニュース収集
+feedparser==6.0.11
+firebase-admin==6.5.0
+python-dotenv==1.0.1
+
+# AI / スクリプト生成
+google-generativeai>=0.8.0
+
+# 音声生成（フォールバック用）
+google-cloud-texttospeech>=2.16.0
+
+# YouTube アップロード
+google-auth-oauthlib>=1.2.0
+google-api-python-client>=2.100.0
+
+# 音声・動画編集
+ffmpeg-python>=0.2.0
+Pillow>=10.0.0
+
+# タイムゾーン
+pytz>=2024.1

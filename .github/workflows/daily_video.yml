@@ -1,0 +1,74 @@
+name: Daily Video Generation
+
+on:
+  schedule:
+    # JST 2:15 = UTC 17:15 (前日)
+    # - cron: "15 17 * * *"
+
+  # 手動実行も可能
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "ドライラン（アップロードをスキップ）"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  generate-video:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generate and upload video
+        env:
+          FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+        run: |
+          cd generator
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            python main.py --dry-run
+          else
+            python main.py
+          fi
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-video
+          path: |
+            generator/output/*.mp4
+            generator/output/*.json
+            generator/output/*.jpg
+          retention-days: 7
+
+      - name: Summary
+        run: |
+          echo "✅ 動画生成完了"
+          echo ""
+          echo "生成されたファイル:"
+          ls -la generator/output/ || echo "出力ファイルなし"
