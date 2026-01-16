@@ -381,55 +381,138 @@ class VideoGenerator:
         # サムネイルサイズ（YouTube推奨: 1280x720）
         width, height = 1280, 720
 
-        # グラデーション背景を作成
-        img = Image.new("RGB", (width, height))
+        # メイン背景画像があれば使用、なければグラデーション
+        if self.main_bg_image.exists():
+            img = Image.open(self.main_bg_image)
+            img = img.resize((width, height), Image.Resampling.LANCZOS)
+            img = img.convert("RGB")
+            # 半透明オーバーレイを追加して文字を読みやすく
+            overlay = Image.new("RGB", (width, height), (0, 0, 40))
+            img = Image.blend(img, overlay, 0.4)
+        else:
+            # グラデーション背景を作成
+            img = Image.new("RGB", (width, height))
+            draw_bg = ImageDraw.Draw(img)
+            for y in range(height):
+                ratio = y / height
+                r = int(
+                    self.BG_COLOR_START[0] * (1 - ratio) + self.BG_COLOR_END[0] * ratio
+                )
+                g = int(
+                    self.BG_COLOR_START[1] * (1 - ratio) + self.BG_COLOR_END[1] * ratio
+                )
+                b = int(
+                    self.BG_COLOR_START[2] * (1 - ratio) + self.BG_COLOR_END[2] * ratio
+                )
+                draw_bg.line([(0, y), (width, y)], fill=(r, g, b))
+
         draw = ImageDraw.Draw(img)
 
-        for y in range(height):
-            ratio = y / height
-            r = int(self.BG_COLOR_START[0] * (1 - ratio) + self.BG_COLOR_END[0] * ratio)
-            g = int(self.BG_COLOR_START[1] * (1 - ratio) + self.BG_COLOR_END[1] * ratio)
-            b = int(self.BG_COLOR_START[2] * (1 - ratio) + self.BG_COLOR_END[2] * ratio)
-            draw.line([(0, y), (width, y)], fill=(r, g, b))
+        # 日本語対応フォントを探す
+        japanese_fonts = [
+            "C:/Windows/Fonts/YuGothB.ttc",  # Yu Gothic Bold
+            "C:/Windows/Fonts/YuGothM.ttc",  # Yu Gothic Medium
+            "C:/Windows/Fonts/meiryob.ttc",  # Meiryo Bold
+            "C:/Windows/Fonts/meiryo.ttc",  # Meiryo
+            "C:/Windows/Fonts/msgothic.ttc",  # MS Gothic
+            "C:/Windows/Fonts/NotoSansJP-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",  # Linux
+        ]
 
-        # フォントを設定
-        try:
-            title_font = ImageFont.truetype("arial.ttf", 64)
-            topic_font = ImageFont.truetype("arial.ttf", 32)
-        except (OSError, IOError):
-            title_font = ImageFont.load_default()
-            topic_font = ImageFont.load_default()
+        english_fonts = [
+            "C:/Windows/Fonts/arialbd.ttf",  # Arial Bold
+            "C:/Windows/Fonts/arial.ttf",  # Arial
+            "arial.ttf",
+        ]
 
-        # タイトルを描画
+        # タイトル用フォント（英語）
+        title_font = ImageFont.load_default()
+        for font_path in english_fonts:
+            try:
+                title_font = ImageFont.truetype(font_path, 80)
+                break
+            except (OSError, IOError):
+                continue
+
+        # トピック用フォント（日本語対応）
+        topic_font = ImageFont.load_default()
+        for font_path in japanese_fonts:
+            try:
+                topic_font = ImageFont.truetype(font_path, 36)
+                break
+            except (OSError, IOError):
+                continue
+
+        # タイトルを描画（中央上部）
         title_bbox = draw.textbbox((0, 0), title, font=title_font)
         title_width = title_bbox[2] - title_bbox[0]
         title_x = (width - title_width) // 2
-        title_y = 100
+        title_y = 80
 
-        draw.text((title_x + 2, title_y + 2), title, fill=(0, 0, 0), font=title_font)
+        # タイトルの影
+        draw.text((title_x + 3, title_y + 3), title, fill=(0, 0, 0), font=title_font)
+        # タイトル本体（白）
         draw.text((title_x, title_y), title, fill=(255, 255, 255), font=title_font)
 
-        # トピックを描画
+        # トピックを描画（日本語対応）
         if topics:
-            y_offset = 250
-            for topic in topics[:3]:
-                topic_text = f"• {topic[:40]}..." if len(topic) > 40 else f"• {topic}"
+            y_offset = 220
+            for i, topic in enumerate(topics[:3]):
+                # トピックテキストを短縮
+                if len(topic) > 35:
+                    topic_text = f"📰 {topic[:35]}..."
+                else:
+                    topic_text = f"📰 {topic}"
+
                 topic_bbox = draw.textbbox((0, 0), topic_text, font=topic_font)
                 topic_width = topic_bbox[2] - topic_bbox[0]
                 topic_x = (width - topic_width) // 2
 
+                # 背景ボックス
+                box_padding = 15
+                box_left = topic_x - box_padding
+                box_top = y_offset - box_padding // 2
+                box_right = topic_x + topic_width + box_padding
+                box_bottom = (
+                    y_offset + (topic_bbox[3] - topic_bbox[1]) + box_padding // 2
+                )
+
+                # 半透明の背景
+                box_overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+                box_draw = ImageDraw.Draw(box_overlay)
+                box_draw.rounded_rectangle(
+                    [box_left, box_top, box_right, box_bottom],
+                    radius=10,
+                    fill=(0, 0, 0, 150),
+                )
+                img = Image.alpha_composite(img.convert("RGBA"), box_overlay).convert(
+                    "RGB"
+                )
+                draw = ImageDraw.Draw(img)
+
+                # テキスト描画
                 draw.text(
                     (topic_x, y_offset),
                     topic_text,
-                    fill=(220, 220, 255),
+                    fill=(255, 255, 255),
                     font=topic_font,
                 )
-                y_offset += 50
+                y_offset += 70
 
-        # 日付を描画
+        # 日付を描画（右下）
         date_text = datetime.now().strftime("%Y.%m.%d")
+        try:
+            date_font_small = ImageFont.truetype(english_fonts[0], 40)
+        except (OSError, IOError):
+            date_font_small = ImageFont.load_default()
+
+        date_bbox = draw.textbbox((0, 0), date_text, font=date_font_small)
+        date_width = date_bbox[2] - date_bbox[0]
         draw.text(
-            (width - 200, height - 60), date_text, fill=(150, 150, 200), font=topic_font
+            (width - date_width - 40, height - 70),
+            date_text,
+            fill=(255, 255, 255),
+            font=date_font_small,
         )
 
         img.save(output_path, "JPEG", quality=95)

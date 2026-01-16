@@ -35,10 +35,32 @@ class AudioGenerator:
         "Steve": {
             "voice": "en-US-GuyNeural",  # 男性の声
             "rate": "-10%",
+            "pitch": "+0Hz",
         },
         "Nancy": {
             "voice": "en-US-JennyNeural",  # 女性の声
             "rate": "-5%",
+            "pitch": "+0Hz",
+        },
+    }
+
+    # Emotion に応じた調整（rate と pitch を変化させてメリハリを付ける）
+    EMOTION_CONFIG = {
+        "neutral": {
+            "rate_adjust": "+0%",
+            "pitch_adjust": "+0Hz",
+        },
+        "curious": {
+            "rate_adjust": "+5%",  # 少し速く
+            "pitch_adjust": "+20Hz",  # 声を少し高く
+        },
+        "surprised": {
+            "rate_adjust": "+10%",  # 驚いて速く
+            "pitch_adjust": "+40Hz",  # 声を高く
+        },
+        "empathetic": {
+            "rate_adjust": "-5%",  # ゆっくり
+            "pitch_adjust": "-10Hz",  # 声を少し低く、落ち着いた感じ
         },
     }
 
@@ -70,13 +92,14 @@ class AudioGenerator:
         return asyncio.run(self._generate_all_audio(all_dialogues))
 
     async def _generate_all_audio(self, dialogues: List[Dict[str, str]]) -> bytes:
-        """全ての発話から音声を生成"""
+        """全ての発話から音声を生成（emotionに応じて声を調整）"""
         audio_segments = []
 
         with tempfile.TemporaryDirectory() as temp_dir:
             for i, dialogue in enumerate(dialogues):
                 speaker = dialogue.get("speaker", "Steve")
                 text = dialogue.get("text", "")
+                emotion = dialogue.get("emotion", "neutral")
 
                 if not text.strip():
                     continue
@@ -84,11 +107,27 @@ class AudioGenerator:
                 voice_config = self.VOICE_CONFIG.get(
                     speaker, self.VOICE_CONFIG["Steve"]
                 )
+                emotion_config = self.EMOTION_CONFIG.get(
+                    emotion, self.EMOTION_CONFIG["neutral"]
+                )
+
+                # ベースのrate/pitchとemotionの調整を組み合わせる
+                base_rate = int(voice_config["rate"].replace("%", "").replace("+", ""))
+                emotion_rate = int(
+                    emotion_config["rate_adjust"].replace("%", "").replace("+", "")
+                )
+                final_rate = f"{base_rate + emotion_rate:+d}%"
+
+                final_pitch = emotion_config["pitch_adjust"]
+
                 temp_file = Path(temp_dir) / f"segment_{i}.mp3"
 
-                # Edge TTS で音声生成
+                # Edge TTS で音声生成（emotion対応）
                 communicate = edge_tts.Communicate(
-                    text, voice_config["voice"], rate=voice_config["rate"]
+                    text,
+                    voice_config["voice"],
+                    rate=final_rate,
+                    pitch=final_pitch,
                 )
                 await communicate.save(str(temp_file))
 

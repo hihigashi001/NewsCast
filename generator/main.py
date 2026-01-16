@@ -170,9 +170,25 @@ def generate_and_upload_video(
     main_audio_path = OUTPUT_DIR / f"main_audio_{date_str}.mp3"
     audio_mixer.convert_to_mp3(str(temp_audio_path), str(main_audio_path))
 
+    # ニュースセクションにBGMを追加（イントロと同じ音量 0.15）
+    bgm_news_path = audio_mixer.assets_dir / "bgm" / "bgm_news.mp3"
+    if bgm_news_path.exists():
+        main_with_bgm_path = OUTPUT_DIR / f"main_with_bgm_{date_str}.mp3"
+        audio_mixer.add_background_music(
+            speech_path=str(main_audio_path),
+            bgm_path=str(bgm_news_path),
+            output_path=str(main_with_bgm_path),
+            bgm_volume=0.15,  # イントロと同じ音量
+        )
+        print(f"   BGM追加: {bgm_news_path.name}")
+        main_audio_for_mix = str(main_with_bgm_path)
+    else:
+        print(f"   ⚠️ BGMファイルが見つかりません: {bgm_news_path}")
+        main_audio_for_mix = str(main_audio_path)
+
     # イントロと結合
     final_audio_path = OUTPUT_DIR / f"final_audio_{date_str}.mp3"
-    audio_mixer.mix_audio(str(main_audio_path), str(final_audio_path))
+    audio_mixer.mix_audio(main_audio_for_mix, str(final_audio_path))
 
     # 正規化
     normalized_audio_path = OUTPUT_DIR / f"normalized_audio_{date_str}.mp3"
