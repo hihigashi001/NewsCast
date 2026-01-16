@@ -458,11 +458,11 @@ class VideoGenerator:
         if topics:
             y_offset = 220
             for i, topic in enumerate(topics[:3]):
-                # トピックテキストを短縮
+                # トピックテキストを短縮（絵文字は使わず番号付きに）
                 if len(topic) > 35:
-                    topic_text = f"📰 {topic[:35]}..."
+                    topic_text = f"{i + 1}. {topic[:35]}..."
                 else:
-                    topic_text = f"📰 {topic}"
+                    topic_text = f"{i + 1}. {topic}"
 
                 topic_bbox = draw.textbbox((0, 0), topic_text, font=topic_font)
                 topic_width = topic_bbox[2] - topic_bbox[0]
