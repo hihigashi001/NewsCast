@@ -81,13 +81,19 @@ class YouTubeUploader:
         if not all([client_id, client_secret, refresh_token]):
             return None
 
-        return Credentials(
+        credentials = Credentials(
             token=None,
             refresh_token=refresh_token,
             token_uri="https://oauth2.googleapis.com/token",
             client_id=client_id,
             client_secret=client_secret,
+            scopes=self.SCOPES,  # scopes を追加
         )
+
+        # トークンをリフレッシュ
+        credentials.refresh(Request())
+
+        return credentials
 
     def upload_video(
         self,

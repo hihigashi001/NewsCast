@@ -181,6 +181,87 @@ def generate_speech_with_edge_tts(script: list, output_path: str):
     print("✅ 音声生成完了")
 
 
+def generate_speech_with_gemini_tts(script: list, output_path: str):
+    """
+    Gemini 2.5 Flash TTS を使用して音声を生成（高品質・メイン動画と同じ声）
+
+    Args:
+        script: 発話リスト
+        output_path: 出力ファイルパス
+    """
+    import os
+    import io
+    from pydub import AudioSegment
+
+    print("🎙️ Gemini TTS で音声を生成中...")
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY 環境変数が設定されていません")
+
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=api_key)
+
+    # 話者ごとの声（audio_generator.py と同じ設定）
+    voices = {
+        "Steve": "Orus",  # 男性、落ち着いた声
+        "Nancy": "Kore",  # 女性、明るい声
+    }
+
+    audio_segments = []
+
+    for i, item in enumerate(script):
+        speaker = item["speaker"]
+        text = item["text"]
+        voice_name = voices.get(speaker, voices["Steve"])
+
+        # Gemini TTS で音声生成
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-preview-tts",
+            contents=text,
+            config=types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                            voice_name=voice_name,
+                        )
+                    )
+                ),
+            ),
+        )
+
+        # 音声データを取得
+        if response.candidates and response.candidates[0].content.parts:
+            for part in response.candidates[0].content.parts:
+                if part.inline_data and part.inline_data.data:
+                    segment = AudioSegment.from_file(
+                        io.BytesIO(part.inline_data.data), format="wav"
+                    )
+                    audio_segments.append(segment)
+
+                    # 発話間に短い無音を追加
+                    silence = AudioSegment.silent(duration=400)
+                    audio_segments.append(silence)
+
+        print(f"   {speaker}: OK")
+
+    # 全セグメントを結合
+    if not audio_segments:
+        raise ValueError("音声生成に失敗しました")
+
+    combined = audio_segments[0]
+    for segment in audio_segments[1:]:
+        combined += segment
+
+    # MP3 として保存
+    combined.export(output_path, format="mp3")
+
+    print("✅ 音声生成完了")
+
+
 def mix_with_bgm(
     speech_path: str, bgm_path: str, output_path: str, bgm_volume: float = 0.15
 ):
@@ -257,25 +338,31 @@ def main():
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_speech = Path(temp_dir) / "speech.mp3"
 
-        # 音声生成（Edge TTS を試し、失敗したら gTTS）
+        # 音声生成（Gemini TTS → Edge TTS → gTTS のフォールバック）
         try:
-            generate_speech_with_edge_tts(INTRO_SCRIPT, str(temp_speech))
+            generate_speech_with_gemini_tts(INTRO_SCRIPT, str(temp_speech))
         except Exception as e:
-            print(f"⚠️ Edge TTS エラー: {e}")
-            print("   gTTS にフォールバック...")
+            print(f"⚠️ Gemini TTS エラー: {e}")
+            print("   Edge TTS にフォールバック...")
 
             try:
-                generate_speech_with_gtts(INTRO_SCRIPT, str(temp_speech))
+                generate_speech_with_edge_tts(INTRO_SCRIPT, str(temp_speech))
             except Exception as e2:
-                print(f"❌ gTTS エラー: {e2}")
-                print()
-                print(
-                    "音声生成に失敗しました。以下のパッケージをインストールしてください:"
-                )
-                print("  pip install edge-tts pydub")
-                print("  または")
-                print("  pip install gTTS pydub")
-                sys.exit(1)
+                print(f"⚠️ Edge TTS エラー: {e2}")
+                print("   gTTS にフォールバック...")
+
+                try:
+                    generate_speech_with_gtts(INTRO_SCRIPT, str(temp_speech))
+                except Exception as e3:
+                    print(f"❌ gTTS エラー: {e3}")
+                    print()
+                    print(
+                        "音声生成に失敗しました。以下のパッケージをインストールしてください:"
+                    )
+                    print("  pip install google-genai pydub")
+                    print("  または")
+                    print("  pip install edge-tts pydub")
+                    sys.exit(1)
 
         # BGM と合成
         mix_with_bgm(

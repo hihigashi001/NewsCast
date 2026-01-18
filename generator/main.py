@@ -63,7 +63,7 @@ def get_selected_news(db, limit: int = 3) -> list:
         limit: 取得する記事数
 
     Returns:
-        ニュース記事のリスト
+        ニュース記事のリスト（選択された記事のみ）
     """
     news_ref = db.collection("news")
     query = news_ref.where("status", "==", "selected").limit(limit)
@@ -76,22 +76,7 @@ def get_selected_news(db, limit: int = 3) -> list:
         data["id"] = doc.id
         news_items.append(data)
 
-    if len(news_items) < 3:
-        print(f"⚠️ 選択された記事が {len(news_items)} 件しかありません（3件必要）")
-        # 不足分を unread から補充
-        remaining = 3 - len(news_items)
-        existing_ids = [item["id"] for item in news_items]
-
-        unread_query = news_ref.where("status", "==", "unread").limit(remaining + 10)
-        for doc in unread_query.stream():
-            if doc.id not in existing_ids:
-                data = doc.to_dict()
-                data["id"] = doc.id
-                news_items.append(data)
-                if len(news_items) >= 3:
-                    break
-
-    return news_items[:3]
+    return news_items
 
 
 def update_news_status(db, news_ids: list, status: str = "archived"):
@@ -153,7 +138,9 @@ def generate_and_upload_video(
 
     # 2. 音声生成
     print("🎙️ ステップ 2/5: 音声生成...")
-    audio_generator = get_audio_generator(use_fallback=use_fallback_tts)
+    # デフォルトでGemini TTS（高品質・感情対応）
+    tts_engine = "edge" if use_fallback_tts else "gemini"
+    audio_generator = get_audio_generator(engine=tts_engine)
     audio_data = audio_generator.generate_audio(script)
 
     # 一時ファイルに保存
@@ -276,7 +263,7 @@ def main():
     parser.add_argument(
         "--use-fallback-tts",
         action="store_true",
-        help="Google Cloud TTS を使用（Gemini TTS が利用できない場合）",
+        help="Edge TTS を使用（Gemini TTS の代わりに無料の Edge TTS を使う場合）",
     )
     parser.add_argument(
         "--skip-status-update",
@@ -297,9 +284,14 @@ def main():
         print("📰 選択された記事を取得中...")
         news_items = get_selected_news(db)
 
+        if len(news_items) == 0:
+            print("📭 選択された記事がありません。動画生成をスキップします。")
+            return 0  # 正常終了
+
         if len(news_items) < 3:
-            print("❌ 記事が不足しています。処理を中止します。")
-            sys.exit(1)
+            print(f"⚠️ 選択された記事が {len(news_items)} 件しかありません（3件必要）")
+            print("📭 動画生成をスキップします。")
+            return 0  # 正常終了
 
         print("   取得した記事:")
         for i, item in enumerate(news_items, 1):
